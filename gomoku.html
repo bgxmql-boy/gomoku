@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>五子棋 · Gomoku</title>
 <link rel="stylesheet" href="styles.css">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -36,6 +37,7 @@
     <div class="modes" role="tablist">
       <button id="pvpBtn" class="btn mode active">双人对弈</button>
       <button id="aiBtn" class="btn mode">人机对弈</button>
+      <button id="onlineBtn" class="btn mode">在线对战</button>
     </div>
 
     <div class="ai-opts" id="aiOpts" hidden>
@@ -53,6 +55,28 @@
           <option value="2" selected>中级</option>
           <option value="3">高级</option>
         </select>
+      </div>
+    </div>
+
+    <div class="online-opts" id="onlineOpts" hidden>
+      <!-- 未连接态:创建或加入房间 -->
+      <div class="online-connect" id="onlineConnect">
+        <button id="createRoomBtn" class="btn primary center">创建房间</button>
+        <div class="online-or"><span>或</span></div>
+        <div class="online-join">
+          <input id="joinCodeInput" class="code-input" placeholder="房间号" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false">
+          <button id="joinRoomBtn" class="btn">加入</button>
+        </div>
+      </div>
+      <!-- 已连接态:显示房间号与状态 -->
+      <div class="online-room" id="onlineRoom" hidden>
+        <div class="room-row">
+          <span class="room-label">房间号</span>
+          <code id="roomCodeDisplay" class="room-code">——</code>
+          <button id="copyCodeBtn" class="btn mini">复制</button>
+        </div>
+        <div class="room-info" id="roomInfo">等待对手加入…</div>
+        <button id="leaveRoomBtn" class="btn">离开房间</button>
       </div>
     </div>
 

@@ -396,6 +396,106 @@ canvas {
 }
 .ai-field select:focus { border-color: rgba(201, 162, 95, 0.7); }
 
+/* ---- 在线对战 ---- */
+.online-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.online-connect { display: flex; flex-direction: column; gap: 10px; }
+
+.online-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ivory-dim);
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  margin: 2px 0;
+}
+.online-or::before, .online-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201, 162, 95, 0.32), transparent);
+}
+
+.online-join {
+  display: flex;
+  gap: 8px;
+}
+.online-join .btn { flex: 0 0 auto; padding: 13px 18px; }
+
+.code-input {
+  flex: 1;
+  min-width: 0;
+  background: #241a12;
+  color: var(--ivory);
+  border: 1px solid rgba(201, 162, 95, 0.32);
+  border-radius: 7px;
+  padding: 12px 10px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.22s ease;
+}
+.code-input::placeholder { color: rgba(173, 150, 120, 0.55); text-transform: none; letter-spacing: 0.06em; font-weight: 500; }
+.code-input:focus { border-color: rgba(201, 162, 95, 0.7); }
+
+.online-room { display: flex; flex-direction: column; gap: 10px; }
+
+.room-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(243, 232, 210, 0.04);
+  border: 1px solid rgba(201, 162, 95, 0.18);
+  border-radius: 9px;
+}
+.room-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--ivory-dim);
+}
+.room-code {
+  flex: 1;
+  text-align: center;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  color: #e3c892;
+  text-transform: uppercase;
+  user-select: all;
+}
+
+.room-info {
+  font-size: 12.5px;
+  letter-spacing: 0.12em;
+  color: var(--ivory-soft);
+  padding: 9px 12px;
+  background: rgba(192, 69, 58, 0.08);
+  border: 1px solid rgba(201, 162, 95, 0.12);
+  border-radius: 7px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.btn.mini {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  border-radius: 6px;
+}
+
 .btn {
   font-family: inherit;
   font-size: 15px;
@@ -577,6 +677,8 @@ footer::after { background: linear-gradient(90deg, rgba(173, 150, 120, 0.5), tra
   .panel { width: min(540px, 94vw); }
   canvas { width: min(92vw, 552px); height: auto; }
   .stamp { width: 54px; height: 54px; font-size: 28px; }
+  .room-code { font-size: 18px; letter-spacing: 0.18em; }
+  .room-row { padding: 9px 10px; gap: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

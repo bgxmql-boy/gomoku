@@ -28,6 +28,17 @@
   const aiOpts = document.getElementById('aiOpts');
   const aiColorSel = document.getElementById('aiColorSel');
   const aiLevelSel = document.getElementById('aiLevelSel');
+  const onlineBtn = document.getElementById('onlineBtn');
+  const onlineOpts = document.getElementById('onlineOpts');
+  const createRoomBtn = document.getElementById('createRoomBtn');
+  const joinCodeInput = document.getElementById('joinCodeInput');
+  const joinRoomBtn = document.getElementById('joinRoomBtn');
+  const onlineConnect = document.getElementById('onlineConnect');
+  const onlineRoom = document.getElementById('onlineRoom');
+  const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+  const roomInfo = document.getElementById('roomInfo');
+  const copyCodeBtn = document.getElementById('copyCodeBtn');
+  const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 
   let board = [];       // 0 empty, 1 black, 2 white
   let history = [];     // {x, y, player}
@@ -44,6 +55,13 @@
   let aiThinking = false;    // AI 推演中（锁定落子/悔棋）
   let aiJobSeq = 0;          // 任务序号：丢弃过期推演结果
   let aiDelayTimer = null;
+
+  // 在线对战状态
+  let peer = null;          // PeerJS 实例
+  let conn = null;          // 当前数据连接
+  let localColor = 0;       // 0 未定 / 1 主机黑 / 2 客机白
+  let connReady = false;    // 双向数据通道就绪
+  let roomCode = null;      // 当前房间号（主机创建后保存）
 
   const COL_LABELS = 'ABCDEFGHJKLMNOP'; // skip I
 
@@ -382,7 +400,7 @@
     return { x, y };
   }
 
-  function placeStone(x, y) {
+  function placeStone(x, y, fromRemote = false) {
     if (gameOver || board[y][x] !== 0) return;
     board[y][x] = currentPlayer;
     history.push({ x, y, player: currentPlayer });
@@ -397,6 +415,10 @@
       gameOver = true;
       if (!reduced) effects.push({ type: 'win', start: performance.now() + 220, duration: 720 });
       showWin(currentPlayer, winLine);
+      // 在线落子成五时也需广播，让对手同步胜负态
+      if (!fromRemote && mode === 'online' && conn && conn.open) {
+        sendMsg({ type: 'move', x, y, player: currentPlayer });
+      }
       updateUI();
       kick();
       if (reduced) draw();
@@ -406,8 +428,16 @@
     if (history.length === SIZE * SIZE) {
       gameOver = true;
       showDraw();
+      if (!fromRemote && mode === 'online' && conn && conn.open) {
+        sendMsg({ type: 'move', x, y, player: currentPlayer });
+      }
       updateUI();
       return;
+    }
+
+    // 落子方未翻转前广播：currentPlayer 仍是本次落子者
+    if (!fromRemote && mode === 'online' && conn && conn.open) {
+      sendMsg({ type: 'move', x, y, player: currentPlayer });
     }
 
     currentPlayer = currentPlayer === 1 ? 2 : 1;
@@ -437,6 +467,7 @@
   }
 
   function undo() {
+    if (mode === 'online') return; // v1 不开放跨端悔棋
     if (history.length === 0 || aiThinking) return;
     if (mode === 'ai') {
       // 成对回退（AI + 玩家），保证回到"轮到玩家"的局面
@@ -465,7 +496,16 @@
 
   function updateUI() {
     turnStone.className = 'stone-indicator ' + (currentPlayer === 1 ? 'stone-black' : 'stone-white');
-    turnText.textContent = aiThinking ? 'AI 思考中…' : (currentPlayer === 1 ? '黑棋' : '白棋') + '执子';
+    // 在线未连接时让出文案，由 setOnlineStatus 统一管理
+    if (mode === 'online' && !connReady) {
+      turnText.textContent = '等待连接…';
+    } else if (aiThinking) {
+      turnText.textContent = 'AI 思考中…';
+    } else if (mode === 'online') {
+      turnText.textContent = (currentPlayer === localColor ? '你的回合' : '对手回合');
+    } else {
+      turnText.textContent = (currentPlayer === 1 ? '黑棋' : '白棋') + '执子';
+    }
     moveCountEl.textContent = history.length;
     if (history.length) {
       const l = history[history.length - 1];
@@ -481,7 +521,9 @@
     } else {
       lastMoveEl.textContent = '—';
     }
-    undoBtn.disabled = aiThinking || (mode === 'ai' ? history.length === 0 : (history.length === 0 || gameOver));
+    // 在线模式禁用悔棋；AI 模式空盘禁用；普通模式空盘或终局禁用
+    undoBtn.disabled = aiThinking || mode === 'online' ||
+      (mode === 'ai' ? history.length === 0 : (history.length === 0 || gameOver));
   }
 
   function showWin(player, line) {
@@ -489,6 +531,8 @@
     winnerStone.className = 'winner-stone ' + (player === 1 ? 'stone-black' : 'stone-white');
     if (mode === 'ai') {
       winnerText.textContent = player === humanColor ? '你赢了' : '电脑获胜';
+    } else if (mode === 'online') {
+      winnerText.textContent = player === localColor ? '你赢了' : '对手获胜';
     } else {
       winnerText.textContent = (player === 1 ? '黑棋' : '白棋') + '获胜';
     }
@@ -525,6 +569,7 @@
   /* ---------- events ---------- */
   canvas.addEventListener('click', (e) => {
     if (mode === 'ai' && currentPlayer === aiColor) return; // AI 回合由程序落子
+    if (mode === 'online' && (!connReady || currentPlayer !== localColor || gameOver)) return; // 在线模式锁
     const cell = getCellFromEvent(e);
     if (cell) placeStone(cell.x, cell.y);
   });
@@ -550,18 +595,184 @@
     scheduleHoverDraw();
   });
 
+  // 重新开始：在线模式下还需同步给对手
+  function restartGame() {
+    winLineCache = null;
+    initBoard();
+    if (mode === 'online' && conn && conn.open) sendMsg({ type: 'restart' });
+  }
   undoBtn.addEventListener('click', undo);
-  restartBtn.addEventListener('click', () => { winLineCache = null; initBoard(); });
-  againBtn.addEventListener('click', () => { winLineCache = null; initBoard(); });
+  restartBtn.addEventListener('click', restartGame);
+  againBtn.addEventListener('click', restartGame);
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'u' || e.key === 'U') undo();
-    if (e.key === 'r' || e.key === 'R') { winLineCache = null; initBoard(); }
+    if (e.key === 'r' || e.key === 'R') restartGame();
     if (e.key === 'Escape') {
       clearTimeout(overlayTimer);
       overlay.classList.remove('show');
     }
   });
+
+  /* ---------- 在线对战 (PeerJS P2P) ---------- */
+  // 房间号字符集：剔除易混 I/O/0/1，6 位足够区分且便于口述
+  const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function genRoomCode() {
+    let s = '';
+    for (let i = 0; i < 6; i++) s += ROOM_CHARS[Math.floor(Math.random() * ROOM_CHARS.length)];
+    return s;
+  }
+
+  function setOnlineStatus(text) {
+    if (roomInfo) roomInfo.textContent = text;
+  }
+
+  function showConnectedUI() {
+    if (onlineConnect) onlineConnect.hidden = true;
+    if (onlineRoom) onlineRoom.hidden = false;
+    if (roomCodeDisplay && roomCode) roomCodeDisplay.textContent = roomCode;
+  }
+
+  function showDisconnectedUI() {
+    if (onlineRoom) onlineRoom.hidden = true;
+    if (onlineConnect) onlineConnect.hidden = false;
+    if (roomCodeDisplay) roomCodeDisplay.textContent = '——';
+    if (joinCodeInput) joinCodeInput.value = '';
+  }
+
+  function sendMsg(msg) {
+    if (conn && conn.open) {
+      try { conn.send(msg); } catch (err) { /* 通道异常由 close/error 事件兜底 */ }
+    }
+  }
+
+  // 主机：创建房间，PeerID 即房间号
+  function createRoom() {
+    if (typeof Peer === 'undefined') { setOnlineStatus('PeerJS 加载失败,请检查网络'); return; }
+    if (peer) { try { peer.destroy(); } catch (e) { /* no-op */ } peer = null; conn = null; connReady = false; }
+    roomCode = genRoomCode();
+    localColor = 1; // 主机执黑先行
+    setOnlineStatus('正在创建房间…');
+    peer = new Peer(roomCode, { debug: 1 });
+    peer.on('open', () => {
+      showConnectedUI();
+      setOnlineStatus('等待对手加入… 房间号见上方');
+    });
+    peer.on('connection', (c) => {
+      if (conn) { try { c.close(); } catch (e) { /* no-op */ } return; } // 只接受一个对手
+      conn = c;
+      bindConn();
+    });
+    peer.on('error', (err) => {
+      if (err.type === 'unavailable-id') {
+        // 房间号被占用（极小概率），重生成重试
+        setOnlineStatus('房间号冲突,正在重试…');
+        setTimeout(createRoom, 300);
+      } else {
+        setOnlineStatus('网络错误：' + err.type);
+      }
+    });
+  }
+
+  // 客机：输入房间号连接主机
+  function joinRoom(code) {
+    code = (code || '').trim().toUpperCase();
+    if (!code) { setOnlineStatus('请输入房间号'); return; }
+    if (code.length < 4) { setOnlineStatus('房间号至少 4 位'); return; }
+    if (typeof Peer === 'undefined') { setOnlineStatus('PeerJS 加载失败,请检查网络'); return; }
+    if (peer) { try { peer.destroy(); } catch (e) { /* no-op */ } peer = null; conn = null; connReady = false; }
+    roomCode = code;
+    localColor = 2; // 客机执白（待 hello 确认）
+    setOnlineStatus('正在加入房间 ' + code + ' …');
+    peer = new Peer({ debug: 1 });
+    peer.on('open', () => {
+      conn = peer.connect(code, { reliable: true });
+      bindConn();
+    });
+    peer.on('error', (err) => {
+      if (err.type === 'peer-unavailable') {
+        setOnlineStatus('房间不存在或已关闭');
+      } else {
+        setOnlineStatus('网络错误：' + err.type);
+      }
+    });
+  }
+
+  function bindConn() {
+    if (!conn) return;
+    conn.on('open', () => {
+      connReady = true;
+      if (localColor === 1) {
+        // 主机向客机发送 hello，分配颜色（主机=黑=1）
+        sendMsg({ type: 'hello', hostColor: 1 });
+        onConnected();
+      }
+      // 客机等收到 hello 后再 onConnected
+    });
+    conn.on('data', onPeerData);
+    conn.on('close', onPeerDisconnect);
+    conn.on('error', onPeerDisconnect);
+  }
+
+  function onPeerData(data) {
+    if (!data || typeof data !== 'object') return;
+    switch (data.type) {
+      case 'hello':
+        localColor = 3 - data.hostColor; // 客机拿到对方颜色补数
+        onConnected();
+        break;
+      case 'move':
+        onRemoteMove(data.x, data.y, data.player);
+        break;
+      case 'restart':
+        onRemoteRestart();
+        break;
+      case 'bye':
+        onPeerDisconnect();
+        break;
+    }
+  }
+
+  function onConnected() {
+    connReady = true;
+    showConnectedUI();
+    setOnlineStatus('已连接 · 你执' + (localColor === 1 ? '黑' : '白') + (localColor === 1 ? '（先行）' : ''));
+    winLineCache = null;
+    initBoard(); // 双方同步清空棋盘
+  }
+
+  function onPeerDisconnect() {
+    connReady = false;
+    conn = null;
+    // 不销毁 peer，允许对手重连（主机侧房间号仍有效）；客机侧建议手动离开重试
+    setOnlineStatus('对手已断开');
+    updateUI();
+  }
+
+  function leaveRoom() {
+    if (conn) { sendMsg({ type: 'bye' }); try { conn.close(); } catch (e) { /* no-op */ } conn = null; }
+    if (peer) { try { peer.destroy(); } catch (e) { /* no-op */ } peer = null; }
+    connReady = false;
+    localColor = 0;
+    roomCode = null;
+    showDisconnectedUI();
+    setOnlineStatus('');
+    winLineCache = null;
+    initBoard();
+  }
+
+  function onRemoteMove(x, y, player) {
+    if (mode !== 'online' || !connReady || gameOver) return;
+    if (currentPlayer !== player) return;  // 失序消息忽略
+    if (board[y][x] !== 0) return;
+    placeStone(x, y, true); // fromRemote=true → 不再广播
+  }
+
+  function onRemoteRestart() {
+    if (mode !== 'online') return;
+    winLineCache = null;
+    initBoard();
+  }
 
   /* ---------- 人机对战 AI ---------- */
   function aiDepth() {
@@ -702,10 +913,14 @@
   }
 
   function setMode(m) {
+    // 从在线模式切走时销毁 peer/连接，避免房间残留
+    if (mode === 'online' && m !== 'online') leaveRoom();
     mode = m;
     pvpBtn.classList.toggle('active', m === 'pvp');
     aiBtn.classList.toggle('active', m === 'ai');
+    onlineBtn.classList.toggle('active', m === 'online');
     aiOpts.hidden = (m !== 'ai');
+    onlineOpts.hidden = (m !== 'online');
     winLineCache = null;
     initBoard();
   }
@@ -719,8 +934,37 @@
 
   pvpBtn.addEventListener('click', () => setMode('pvp'));
   aiBtn.addEventListener('click', () => setMode('ai'));
+  onlineBtn.addEventListener('click', () => setMode('online'));
   aiColorSel.addEventListener('change', applyAiSettings);
   aiLevelSel.addEventListener('change', () => { winLineCache = null; initBoard(); });
+
+  // 在线对战 UI 事件
+  createRoomBtn.addEventListener('click', createRoom);
+  joinRoomBtn.addEventListener('click', () => joinRoom(joinCodeInput.value));
+  joinCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') joinRoom(joinCodeInput.value);
+  });
+  // 输入时强制大写并过滤非房间字符
+  joinCodeInput.addEventListener('input', () => {
+    const v = joinCodeInput.value.toUpperCase().replace(/[^A-Z2-9]/g, '').replace(/[IO]/g, '');
+    if (v !== joinCodeInput.value) joinCodeInput.value = v;
+  });
+  copyCodeBtn.addEventListener('click', () => {
+    if (!roomCode) return;
+    const fallback = () => {
+      joinCodeInput.value = roomCode;
+      joinCodeInput.select();
+      try { document.execCommand('copy'); } catch (err) { /* no-op */ }
+      joinCodeInput.value = '';
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(roomCode).catch(fallback);
+    } else fallback();
+    const t = copyCodeBtn.textContent;
+    copyCodeBtn.textContent = '已复制';
+    setTimeout(() => copyCodeBtn.textContent = t, 1200);
+  });
+  leaveRoomBtn.addEventListener('click', leaveRoom);
 
   setupCanvas();
   buildWood();
