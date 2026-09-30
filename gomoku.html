@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五子棋 · Gomoku</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="watermark" aria-hidden="true">弈</div>
+<div class="motes" id="motes" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<header>
+  <div class="title-row">
+    <h1 class="brush">五子棋</h1>
+    <span class="seal-sm" aria-hidden="true">棋</span>
+  </div>
+  <div class="subtitle latin">Gomoku</div>
+  <div class="deco"><span></span></div>
+</header>
+
+<div class="game-wrap">
+  <div class="board-container">
+    <canvas id="board"></canvas>
+  </div>
+
+  <aside class="panel">
+    <div class="panel-head">
+      <span class="mark"></span>
+      <h3 class="brush">棋局</h3>
+      <span class="line"></span>
+    </div>
+
+    <div class="modes" role="tablist">
+      <button id="pvpBtn" class="btn mode active">双人对弈</button>
+      <button id="aiBtn" class="btn mode">人机对弈</button>
+    </div>
+
+    <div class="ai-opts" id="aiOpts" hidden>
+      <div class="ai-field">
+        <span>执子</span>
+        <select id="aiColorSel">
+          <option value="2" selected>我执黑</option>
+          <option value="1">我执白（AI 先行）</option>
+        </select>
+      </div>
+      <div class="ai-field">
+        <span>难度</span>
+        <select id="aiLevelSel">
+          <option value="1">初级</option>
+          <option value="2" selected>中级</option>
+          <option value="3">高级</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div id="turnStone" class="stone-indicator stone-black"></div>
+      <div class="status-text">
+        <div class="label">当前回合</div>
+        <div id="turnText" class="value">黑棋执子</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-box">
+        <div class="num" id="moveCount">0</div>
+        <div class="name">总步数</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" id="lastMove">—</div>
+        <div class="name">上一手</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="undoBtn" class="btn primary">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-4"/></svg></span>
+        <span>悔棋</span>
+        <kbd>U</kbd>
+      </button>
+      <button id="restartBtn" class="btn">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span>
+        <span>重新开始</span>
+        <kbd>R</kbd>
+      </button>
+    </div>
+  </aside>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="win-card">
+    <span class="stamp" id="winStamp">胜</span>
+    <div id="winnerStone" class="winner-stone stone-black"></div>
+    <h2 id="winnerText" class="brush">黑棋获胜</h2>
+    <p id="winDetail">恭喜取得胜利！</p>
+    <button class="btn primary center" id="againBtn">
+      <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span>
+      <span>再来一局</span>
+    </button>
+  </div>
+</div>
+
+<footer>五子连珠 · 纵横捭阖</footer>
+
+<script src="main.js"></script>
+
+</body>
+</html>
