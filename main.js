@@ -623,6 +623,30 @@
     return s;
   }
 
+  // ICE 服务器配置：PeerJS 默认只用 stun.l.google.com（国内不可达），
+  // 这里换成国内可用 STUN + 公共免费 TURN（openrelay），保证跨 NAT/移动网络可连通
+  const ICE_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.miwifi.com:3478' },
+      { urls: 'stun:stun.qq.com:3478' },
+      { urls: 'stun:stun.chat.bilibili.com:3478' },
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+    ]
+  };
+
+  // 连接超时：信令/ICE 卡住时给出可见反馈而不是无限等待
+  let connTimeout = null;
+  function armConnTimeout(ms, onTimeout) {
+    clearConnTimeout();
+    connTimeout = setTimeout(onTimeout, ms);
+  }
+  function clearConnTimeout() {
+    if (connTimeout) { clearTimeout(connTimeout); connTimeout = null; }
+  }
+
   function setOnlineStatus(text) {
     if (roomInfo) roomInfo.textContent = text;
   }
@@ -652,10 +676,14 @@
     if (peer) { try { peer.destroy(); } catch (e) { /* no-op */ } peer = null; conn = null; connReady = false; }
     roomCode = genRoomCode();
     localColor = 1; // 主机执黑先行
+    showConnectedUI(); // 立即展示面板，让状态可见
     setOnlineStatus('正在创建房间…');
-    peer = new Peer(roomCode, { debug: 1 });
+    armConnTimeout(15000, () => {
+      if (!connReady) setOnlineStatus('连接信令服务器超时,请重试');
+    });
+    peer = new Peer(roomCode, { debug: 1, config: ICE_CONFIG });
     peer.on('open', () => {
-      showConnectedUI();
+      clearConnTimeout();
       setOnlineStatus('等待对手加入… 房间号见上方');
     });
     peer.on('connection', (c) => {
@@ -664,6 +692,7 @@
       bindConn();
     });
     peer.on('error', (err) => {
+      clearConnTimeout();
       if (err.type === 'unavailable-id') {
         // 房间号被占用（极小概率），重生成重试
         setOnlineStatus('房间号冲突,正在重试…');
@@ -677,19 +706,25 @@
   // 客机：输入房间号连接主机
   function joinRoom(code) {
     code = (code || '').trim().toUpperCase();
+    showConnectedUI(); // 立即展示面板，错误/进度对用户可见
     if (!code) { setOnlineStatus('请输入房间号'); return; }
     if (code.length < 4) { setOnlineStatus('房间号至少 4 位'); return; }
     if (typeof Peer === 'undefined') { setOnlineStatus('PeerJS 加载失败,请检查网络'); return; }
     if (peer) { try { peer.destroy(); } catch (e) { /* no-op */ } peer = null; conn = null; connReady = false; }
     roomCode = code;
+    if (roomCodeDisplay) roomCodeDisplay.textContent = roomCode;
     localColor = 2; // 客机执白（待 hello 确认）
     setOnlineStatus('正在加入房间 ' + code + ' …');
-    peer = new Peer({ debug: 1 });
+    armConnTimeout(20000, () => {
+      if (!connReady) setOnlineStatus('连接超时:无法建立 P2P 通道,请重试或更换网络');
+    });
+    peer = new Peer({ debug: 1, config: ICE_CONFIG });
     peer.on('open', () => {
       conn = peer.connect(code, { reliable: true });
       bindConn();
     });
     peer.on('error', (err) => {
+      clearConnTimeout();
       if (err.type === 'peer-unavailable') {
         setOnlineStatus('房间不存在或已关闭');
       } else {
@@ -735,6 +770,7 @@
 
   function onConnected() {
     connReady = true;
+    clearConnTimeout();
     showConnectedUI();
     setOnlineStatus('已连接 · 你执' + (localColor === 1 ? '黑' : '白') + (localColor === 1 ? '（先行）' : ''));
     winLineCache = null;
@@ -750,6 +786,7 @@
   }
 
   function leaveRoom() {
+    clearConnTimeout();
     if (conn) { sendMsg({ type: 'bye' }); try { conn.close(); } catch (e) { /* no-op */ } conn = null; }
     if (peer) { try { peer.destroy(); } catch (e) { /* no-op */ } peer = null; }
     connReady = false;
